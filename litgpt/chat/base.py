@@ -77,7 +77,7 @@ def generate(
 def process_prompt(
     prompt, model, tokenizer, prompt_style, fabric, temperature, max_new_tokens, top_k, top_p, stop_tokens
 ):
-    prompt = prompt_style.apply(prompt=prompt)
+    prompt = prompt_style.apply(prompt=prompt, tokenizer=tokenizer)
     encoded_prompt = tokenizer.encode(prompt, device=fabric.device)
 
     if max_new_tokens is None:

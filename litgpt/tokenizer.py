@@ -69,6 +69,30 @@ class Tokenizer:
             with open(config_path, encoding="utf-8") as fp:
                 self.apply_decoding_fix = "LlamaTokenizer" in json.load(fp)["tokenizer_class"]
 
+        # Load transformers tokenizer for chat template support
+        self._transformers_tokenizer = None
+        self._load_transformers_tokenizer(checkpoint_dir)
+
+    def _load_transformers_tokenizer(self, checkpoint_dir: Path) -> None:
+        """Load transformers tokenizer for advanced features like chat templates."""
+        try:
+            from transformers import AutoTokenizer
+
+            self._transformers_tokenizer = AutoTokenizer.from_pretrained(checkpoint_dir, trust_remote_code=True)
+        except Exception:
+            # Silently fail if transformers tokenizer can't be loaded
+            self._transformers_tokenizer = None
+
+    def apply_chat_template(self, *args, **kwargs):
+        """Apply chat template using transformers tokenizer if available."""
+        if self._transformers_tokenizer is not None:
+            return self._transformers_tokenizer.apply_chat_template(*args, **kwargs)
+        else:
+            raise NotImplementedError(
+                "Chat template support requires transformers tokenizer. "
+                "Install transformers and ensure the checkpoint has tokenizer_config.json"
+            )
+
     @property
     def vocab_size(self) -> int:
         if self.backend == "huggingface":

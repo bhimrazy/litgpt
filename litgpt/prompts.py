@@ -367,6 +367,133 @@ class Gemma(PromptStyle):
         return f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
 
 
+class FunctionGemma(PromptStyle):
+    def apply(self, prompt: str, *, sys_prompt: Optional[str] = None, **kwargs) -> str:
+        # FunctionGemma is designed for function calling (tool use)
+        # For full utilization, leverage the Hugging Face chat template which is the source of truth
+        # The chat template handles: tool definitions, function calls, responses, and proper formatting
+
+        # Check if tools are provided for function calling
+        tools = kwargs.get("tools")
+        if tools:
+            # Remove tools from kwargs to avoid duplicate argument
+            kwargs_without_tools = {k: v for k, v in kwargs.items() if k != "tools"}
+            return self._apply_with_chat_template(prompt, sys_prompt, tools, **kwargs_without_tools)
+        else:
+            # Basic chat format when no tools provided
+            if sys_prompt:
+                return f"<start_of_turn>developer\n{sys_prompt}<end_of_turn>\n<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+            else:
+                return f"<start_of_turn>user\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+
+    def _apply_with_chat_template(self, prompt: str, sys_prompt: Optional[str], tools: List[Dict], **kwargs) -> str:
+        """Use Hugging Face chat template for full function calling support."""
+        try:
+            # Try to get tokenizer from kwargs (passed by LitGPT)
+            tokenizer = kwargs.get("tokenizer")
+            if tokenizer and hasattr(tokenizer, "apply_chat_template"):
+                # Use the official chat template - this is the source of truth
+                messages = []
+                if sys_prompt:
+                    messages.append({"role": "developer", "content": sys_prompt})
+                else:
+                    messages.append(
+                        {
+                            "role": "developer",
+                            "content": "You are a model that can do function calling with the following functions",
+                        }
+                    )
+                messages.append({"role": "user", "content": prompt})
+
+                # Apply the chat template with tools
+                formatted = tokenizer.apply_chat_template(
+                    messages,
+                    tools=tools,
+                    add_generation_prompt=True,
+                    tokenize=False,  # Return string, not tokens
+                )
+                return formatted
+        except Exception:
+            pass  # Fall back to manual formatting
+
+        # Fallback: manual formatting if tokenizer not available
+        return self._apply_with_tools_fallback(prompt, sys_prompt, tools)
+
+    def _apply_with_tools_fallback(self, prompt: str, sys_prompt: Optional[str], tools: List[Dict]) -> str:
+        """Fallback manual formatting when chat template is not available."""
+        result = "<start_of_turn>developer\n"
+        if sys_prompt:
+            result += f"{sys_prompt}\n"
+        result += "You are a model that can do function calling with the following functions"
+
+        # Add tool definitions using proper FunctionGemma format
+        for tool in tools:
+            result += "<start_function_declaration>"
+            result += self._format_tool_declaration(tool)
+            result += "<end_function_declaration>"
+
+        result += "<end_of_turn>\n"
+        result += f"<start_of_turn>user\n{prompt}<end_of_turn>\n"
+        result += "<start_of_turn>model\n"
+        return result
+
+    def _format_tool_declaration(self, tool: Dict) -> str:
+        """Format a tool definition for FunctionGemma using the official format."""
+        function = tool.get("function", {})
+        name = function.get("name", "")
+        description = function.get("description", "")
+        parameters = function.get("parameters", {})
+
+        result = f"declaration:{name}{{description:<escape>{description}<escape>"
+
+        if parameters:
+            result += ",parameters:{"
+            props = parameters.get("properties", {})
+            required = parameters.get("required", [])
+
+            # Format properties
+            prop_parts = []
+            for prop_name, prop_info in props.items():
+                prop_type = prop_info.get("type", "").upper()
+                prop_desc = prop_info.get("description", "")
+                prop_str = f"{prop_name}:{{description:<escape>{prop_desc}<escape>,type:<escape>{prop_type}<escape>}}"
+                if "enum" in prop_info:
+                    enum_values = [f"<escape>{v}<escape>" for v in prop_info["enum"]]
+                    prop_str += f",enum:[{','.join(enum_values)}]"
+                prop_parts.append(prop_str)
+
+            if prop_parts:
+                result += f"properties:{{{','.join(prop_parts)}}}"
+
+            if required:
+                req_parts = [f"<escape>{req}<escape>" for req in required]
+                result += f",required:[{','.join(req_parts)}]"
+
+            param_type = parameters.get("type", "").upper()
+            if param_type:
+                result += f",type:<escape>{param_type}<escape>"
+
+            result += "}"
+
+        result += "}"
+        return result
+
+    def stop_tokens(self, tokenizer: "Tokenizer") -> Tuple[List[int], ...]:
+        # FunctionGemma has additional stop tokens for function calls and responses
+        stop_tokens = [tokenizer.eos_id]
+        try:
+            # Add function-related tokens as stop tokens
+            stop_tokens.extend(
+                [
+                    tokenizer.token_to_id("<end_function_call>"),
+                    tokenizer.token_to_id("<end_function_response>"),
+                ]
+            )
+        except (ValueError, KeyError):
+            pass  # Tokens might not exist
+        return (stop_tokens,)
+
+
 class OLMo(PromptStyle):
     def apply(self, prompt: str, *, sys_prompt: Optional[str] = None, **kwargs: str) -> str:
         return f"<|endoftext|><|user|>\n{prompt}\n<|assistant|>\n"
@@ -442,6 +569,7 @@ prompt_styles: Dict[str, Type[PromptStyle]] = {
     "phi-4-mini-reasoning": Phi4MiniReasoning,
     "tinyllama": TinyLlama,
     "gemma": Gemma,
+    "functiongemma": FunctionGemma,
     "llama3": Llama3,
     "olmo": OLMo,
     "qwen2.5": Qwen2_5,
@@ -498,6 +626,8 @@ def model_name_to_prompt_style(model_name: str) -> PromptStyle:
         return Phi4()
     if re.search(r"tiny-llama.*chat", model_name):
         return TinyLlama()
+    if re.search(r"FunctionGemma.*-it", model_name):
+        return FunctionGemma()
     if re.search(r"(Code)?Gemma.*-it", model_name):
         return Gemma()
     if re.search(r"OLMo.*-hf", model_name):

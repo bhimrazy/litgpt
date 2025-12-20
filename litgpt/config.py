@@ -1335,6 +1335,45 @@ gemma3 = [
 configs.extend(gemma3)
 
 ##################
+# Google FunctionGemma
+##################
+functiongemma = [
+    # https://huggingface.co/google/functiongemma-270m-it/blob/main/config.json
+    dict(
+        name="FunctionGemma-270M-it",
+        hf_config=dict(org="google", name="functiongemma-270m-it"),
+        scale_embeddings=True,
+        attention_scores_scalar=256,
+        vocab_size=262144,
+        block_size=32768,
+        sliding_window_size=512,
+        # Every 6th layer is full attention (global), others sliding (local)
+        sliding_window_indices=[0 if (i + 1) % 6 == 0 else 1 for i in range(18)],
+        intermediate_size=2048,
+        n_embd=640,
+        n_layer=18,
+        n_head=4,
+        n_query_groups=1,
+        head_size=256,
+        rotary_percentage=1.0,
+        rope_adjustments=None,
+        parallel_residual=False,
+        bias=False,
+        norm_class_name="RMSNorm",
+        mlp_class_name="GemmaMLP",
+        gelu_approximate="tanh",
+        post_attention_norm=True,
+        post_mlp_norm=True,
+        norm_qk=True,
+        rope_base=1000000,
+        rope_local_base_freq=10000,
+        # Every 6th layer is full attention (global), others sliding (local)
+        rope_indices=[0 if (i + 1) % 6 == 0 else 1 for i in range(18)],
+    ),
+]
+configs.extend(functiongemma)
+
+##################
 # Google CodeGemma
 ##################
 codegemma = [

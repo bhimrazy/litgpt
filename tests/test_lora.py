@@ -691,7 +691,9 @@ def test_against_original_gemma_2(model_name):
 
 @torch.inference_mode()
 @pytest.mark.flaky(reruns=3)
-@pytest.mark.parametrize("model_name", ("gemma-3-1b-it", "gemma-3-4b-it", "gemma-3-12b-it", "gemma-3-27b-it"))
+@pytest.mark.parametrize(
+    "model_name", ("gemma-3-1b-it", "gemma-3-4b-it", "gemma-3-12b-it", "gemma-3-27b-it", "functiongemma-270m-it")
+)
 def test_against_original_gemma_3(model_name):
     device = torch.device("cpu")
     dtype = torch.float32

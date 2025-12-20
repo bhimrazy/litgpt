@@ -68,6 +68,7 @@ def test_prompt_style_from_config():
         "Llama-3.1-405B-Instruct",
         "Gemma-2b-it",
         "Gemma-7b-it",
+        "FunctionGemma-270M-it",
         "FreeWilly2",
         "CodeLlama-7b-Instruct-hf",
         "CodeLlama-13b-Instruct-hf",
